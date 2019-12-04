@@ -4,7 +4,9 @@
 
 #include <boost/array.hpp>
 #include <boost/asio.hpp>
+#if OPENSSL
 #include <boost/asio/ssl.hpp>
+#endif
 #include <boost/bind.hpp>
 #include <boost/lockfree/queue.hpp>
 
@@ -28,6 +30,7 @@ class verbose_verification
 public:
     verbose_verification(Verifier verifier) : verifier_(verifier) {}
 
+#if OPENSSL
     bool operator()(bool preverified, boost::asio::ssl::verify_context& ctx)
     {
         char subject_name[256];
@@ -43,6 +46,7 @@ public:
 #endif
         return verified;
     }
+#endif
 
 private:
     Verifier verifier_;
@@ -132,7 +136,9 @@ private:
     // Use shared ptrs to avoid crashes due to async_writes
     // see
     // https://stackoverflow.com/questions/41526553/can-async-write-cause-segmentation-fault-when-this-is-deleted
+#if OPENSSL
     std::shared_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> m_securesocket;
+#endif
     std::shared_ptr<boost::asio::ip::tcp::socket> m_nonsecuresocket;
 
     boost::asio::streambuf m_sendBuffer;

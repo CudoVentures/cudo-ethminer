@@ -1,0 +1,97 @@
+stages:
+  - build
+  - publish
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+pack-win:
+  stage: build
+  variables:
+    GOOGLE_APPLICATION_CREDENTIALS: 'C:\Users\Builder\build-credentials.json'
+    CUDA_VERSION: 9.2.88-1
+  tags:
+    - shell
+    - build
+    - win
+  script:
+    - mkdir build-win
+    - cd build-win
+    - cmake .. -G "Visual Studio 15 2017 Win64" -T v140,host=x64
+    - cmake --build . --config Release
+  artifacts:
+    paths:
+      - build-win/ethminer/Release/ethminer.exe
+
+pack-linux:
+  stage: build
+  image: nvidia/cuda:9.2-devel-ubuntu18.04
+  variables:
+    HUNTER_ROOT: $CI_PROJECT_DIR/.hunter
+  cache:
+    key: linux
+    paths:
+      - .hunter
+  tags:
+    - docker
+    - build
+    - linux
+  before_script:
+    - apt update
+    - apt install -y git cmake g++ gcc mesa-common-dev libdbus-1-dev wget
+    - wget https://storage.googleapis.com/cudo-download/tools/AMD-APP-SDK-v3.0.130.136-GA-linux64.sh
+    - chmod +x AMD-APP-SDK-v3.0.130.136-GA-linux64.sh
+    - ./AMD-APP-SDK-v3.0.130.136-GA-linux64.sh -- --acceptEULA 'yes' -s
+  script:
+    - mkdir build-linux
+    - cd build-linux
+    - cmake ..
+    - make
+  artifacts:
+    paths:
+      - build-linux/ethminer/ethminer
+
+upload:
+  stage: publish
+  image:
+    name: gcr.io/cloud-builders/gsutil
+    entrypoint:
+      - ''
+  only:
+    refs:
+      - tags
+  variables:
+    GOOGLE_APPLICATION_CREDENTIALS: /build-credentials.json
+  dependencies:
+    - pack-win
+    - pack-linux
+  tags:
+    - docker
+    - build
+    - linux
+  before_script:
+    - apt-get update
+    - apt-get install -y apt-transport-https
+    - curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
+    - echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+    - curl -sL https://deb.nodesource.com/setup_10.x | bash -
+    - apt-get install -y yarn nodejs
+    - echo $GCLOUD_BUILD_CREDENTIALS | base64 -d > /build-credentials.json
+    - gcloud auth activate-service-account --key-file /build-credentials.json
+    - yarn --ignore-scripts
+  script:
+    - yarn --cwd addon
+    - yarn --cwd addon build
+    - "VERSION=$(grep -m1 version package.json | awk -F: '{ print $2 }' | sed 's/[\", ]//g')"
+    - node scripts/sign.js build-win/ethminer/Release/ethminer.exe
+    - cp addon/dist/bundle.js  build-win/ethminer/Release
+    - cp addon/dist/bundle.js build-linux/ethminer
+    - cp addon/package.json  build-win/ethminer/Release
+    - cp addon/package.json build-linux/ethminer
+    - cp libs/* build-linux/ethminer
+    - tar -czvf win-$VERSION.tar.gz -C build-win/ethminer/Release .
+    - tar -czvf linux-$VERSION.tar.gz -C build-linux/ethminer .
+    - gsutil cp win-$VERSION.tar.gz gs://cudo-download/images/cudo-ethminer/win/x64/$VERSION.tar.gz
+    - gsutil cp linux-$VERSION.tar.gz gs://cudo-download/images/cudo-ethminer/linux/x64/$VERSION.tar.gz
+    - gsutil -m setmeta -h 'Cache-Control:no-cache' gs://cudo-download/images/cudo-ethminer/win/x64/$VERSION.tar.gz
+    - gsutil -m setmeta -h 'Cache-Control:no-cache' gs://cudo-download/images/cudo-ethminer/linux/x64/$VERSION.tar.gz

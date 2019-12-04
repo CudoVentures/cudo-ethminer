@@ -36,6 +36,7 @@ EthStratumClient::EthStratumClient(int worktimeout, int responsetimeout)
 
 void EthStratumClient::init_socket()
 {
+#if OPENSSL
     // Prepare Socket
     if (m_conn->SecLevel() != SecureLevel::NONE)
     {
@@ -103,6 +104,10 @@ void EthStratumClient::init_socket()
         m_nonsecuresocket = std::make_shared<boost::asio::ip::tcp::socket>(m_io_service);
         m_socket = m_nonsecuresocket.get();
     }
+#else
+    m_nonsecuresocket = std::make_shared<boost::asio::ip::tcp::socket>(m_io_service);
+    m_socket = m_nonsecuresocket.get();
+#endif
 
     // Activate keep alive to detect disconnects
     unsigned int keepAlive = 10000;
@@ -190,6 +195,7 @@ void EthStratumClient::disconnect()
         {
             boost::system::error_code sec;
 
+#if OPENSSL
             if (m_conn->SecLevel() != SecureLevel::NONE)
             {
                 // This will initiate the exchange of "close_notify" message among parties.
@@ -210,6 +216,10 @@ void EthStratumClient::disconnect()
                 m_nonsecuresocket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, sec);
                 m_socket->close();
             }
+#else
+                m_nonsecuresocket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, sec);
+                m_socket->close();
+#endif
         }
         catch (std::exception const& _e)
         {
@@ -223,6 +233,7 @@ void EthStratumClient::disconnect()
 
 void EthStratumClient::disconnect_finalize()
 {
+#if OPENSSL
     if (m_securesocket && m_securesocket->lowest_layer().is_open())
     {
         // Manage error code if layer is already shut down
@@ -230,6 +241,7 @@ void EthStratumClient::disconnect_finalize()
         m_securesocket->lowest_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
         m_securesocket->lowest_layer().close();
     }
+#endif
     m_socket = nullptr;
     m_nonsecuresocket = nullptr;
 
@@ -340,6 +352,7 @@ void EthStratumClient::start_connect()
         enqueue_response_plea();
         m_solution_submitted_max_id = 0;
 
+#if OPENSSL
         // Start connecting async
         if (m_conn->SecLevel() != SecureLevel::NONE)
         {
@@ -351,6 +364,10 @@ void EthStratumClient::start_connect()
             m_socket->async_connect(m_endpoint,
                 m_io_strand.wrap(boost::bind(&EthStratumClient::connect_handler, this, _1)));
         }
+#else
+            m_socket->async_connect(m_endpoint,
+                m_io_strand.wrap(boost::bind(&EthStratumClient::connect_handler, this, _1)));
+#endif
     }
     else
     {
@@ -408,6 +425,7 @@ void EthStratumClient::workloop_timer_elapsed(const boost::system::error_code& e
                     m_socket->close();
                     return;
                 }
+#if OPENSSL
 
                 // This is set for SSL disconnection
                 if (m_disconnecting.load(std::memory_order_relaxed) &&
@@ -419,6 +437,7 @@ void EthStratumClient::workloop_timer_elapsed(const boost::system::error_code& e
                         return;
                     }
                 }
+#endif
             }
         }
 
@@ -518,6 +537,7 @@ void EthStratumClient::connect_handler(const boost::system::error_code& ec)
         cnote << "Socket connected to " << ActiveEndPoint();
 #endif
 
+#if OPENSSL
     if (m_conn->SecLevel() != SecureLevel::NONE)
     {
         boost::system::error_code hec;
@@ -568,6 +588,10 @@ void EthStratumClient::connect_handler(const boost::system::error_code& ec)
         m_nonsecuresocket->set_option(boost::asio::socket_base::keep_alive(true));
         m_nonsecuresocket->set_option(tcp::no_delay(true));
     }
+#else
+    m_nonsecuresocket->set_option(boost::asio::socket_base::keep_alive(true));
+    m_nonsecuresocket->set_option(tcp::no_delay(true));
+#endif
 
     // Clean buffer from any previous stale data
     m_sendBuffer.consume(4096);
@@ -1164,7 +1188,7 @@ void EthStratumClient::processResponse(Json::Value& responseObject)
             }
             else
             {
-                
+
                 if (m_onSolutionRejected)
                 {
                     cwarn << "Reject reason : "
@@ -1635,14 +1659,14 @@ void EthStratumClient::submitSolution(const Solution& solution)
         jReq["params"].append(
             toHex(solution.nonce, HexPrefix::DontAdd).substr(solution.work.exSizeBytes));
         break;
-        
+
     case EthStratumClient::ETHEREUMSTRATUM2:
 
         jReq["params"].append(solution.work.job);
         jReq["params"].append(
             toHex(solution.nonce, HexPrefix::DontAdd).substr(solution.work.exSizeBytes));
         jReq["params"].append(m_session->workerId);
-        break;        
+        break;
     }
 
     enqueue_response_plea();
@@ -1651,6 +1675,7 @@ void EthStratumClient::submitSolution(const Solution& solution)
 
 void EthStratumClient::recvSocketData()
 {
+#if OPENSSL
     if (m_conn->SecLevel() != SecureLevel::NONE)
     {
         async_read(*m_securesocket, m_recvBuffer, boost::asio::transfer_at_least(1),
@@ -1663,6 +1688,11 @@ void EthStratumClient::recvSocketData()
             m_io_strand.wrap(boost::bind(&EthStratumClient::onRecvSocketDataCompleted, this,
                 boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
     }
+#else
+        async_read(*m_nonsecuresocket, m_recvBuffer, boost::asio::transfer_at_least(1),
+            m_io_strand.wrap(boost::bind(&EthStratumClient::onRecvSocketDataCompleted, this,
+                boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
+#endif
 }
 
 void EthStratumClient::onRecvSocketDataCompleted(
@@ -1765,7 +1795,7 @@ void EthStratumClient::onRecvSocketDataCompleted(
                 cwarn << "Double check your pool credentials.";
                 m_conn->MarkUnrecoverable();
             }
-
+#if OPENSSL
             if ((ec.category() == boost::asio::error::get_ssl_category()) &&
                 (ERR_GET_REASON(ec.value()) == SSL_RECEIVED_SHUTDOWN))
             {
@@ -1779,6 +1809,16 @@ void EthStratumClient::onRecvSocketDataCompleted(
             {
                 cwarn << "Socket read failed: " << ec.message();
             }
+#else
+            if (ec == boost::asio::error::eof)
+            {
+                cnote << "Connection remotely closed by " << m_conn->Host();
+            }
+            else
+            {
+                cwarn << "Socket read failed: " << ec.message();
+            }
+#endif
             m_io_service.post(m_io_strand.wrap(boost::bind(&EthStratumClient::disconnect, this)));
         }
     }
@@ -1816,6 +1856,7 @@ void EthStratumClient::sendSocketData()
         delete line;
     }
 
+#if OPENSSL
     if (m_conn->SecLevel() != SecureLevel::NONE)
     {
         async_write(*m_securesocket, m_sendBuffer,
@@ -1828,6 +1869,11 @@ void EthStratumClient::sendSocketData()
             m_io_strand.wrap(boost::bind(&EthStratumClient::onSendSocketDataCompleted, this,
                 boost::asio::placeholders::error)));
     }
+#else
+        async_write(*m_nonsecuresocket, m_sendBuffer,
+            m_io_strand.wrap(boost::bind(&EthStratumClient::onSendSocketDataCompleted, this,
+                boost::asio::placeholders::error)));
+#endif
 }
 
 void EthStratumClient::onSendSocketDataCompleted(const boost::system::error_code& ec)
@@ -1838,13 +1884,14 @@ void EthStratumClient::onSendSocketDataCompleted(const boost::system::error_code
         m_txQueue.consume_all([](std::string* l) { delete l; });
         m_txPending.store(false, std::memory_order_relaxed);
 
+#if OPENSSL
         if ((ec.category() == boost::asio::error::get_ssl_category()) &&
             (SSL_R_PROTOCOL_IS_SHUTDOWN == ERR_GET_REASON(ec.value())))
         {
             cnote << "SSL Stream error : " << ec.message();
             m_io_service.post(m_io_strand.wrap(boost::bind(&EthStratumClient::disconnect, this)));
         }
-
+#endif
         if (isConnected())
         {
             cwarn << "Socket write failed : " << ec.message();
