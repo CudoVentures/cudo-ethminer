@@ -1,7 +1,7 @@
 {
   "name": "@cudoventures/cudo-ethminer",
   "description": "cudo-ethminer",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "main": "./addon/index.js",
   "repository": {
     "type": "git",

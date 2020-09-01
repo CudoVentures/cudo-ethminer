@@ -1,6 +1,6 @@
 {
   "name": "cudo-ethminer",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "main": "bundle.js",
   "author": "Cudo Ventures",
   "scripts": {
