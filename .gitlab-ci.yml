@@ -89,6 +89,8 @@ upload:
     - cp addon/package.json  build-win/ethminer/Release
     - cp addon/package.json build-linux/ethminer
     - cp libs/* build-linux/ethminer
+    - gsutil cp gs://cudo-build/windows/msvcp140.dll build-win/ethminer/Release/msvcp140.dll
+    - gsutil cp gs://cudo-build/windows/vcruntime140.dll build-win/ethminer/Release/vcruntime140.dll
     - tar -czvf win-$VERSION.tar.gz -C build-win/ethminer/Release .
     - tar -czvf linux-$VERSION.tar.gz -C build-linux/ethminer .
     - gsutil cp win-$VERSION.tar.gz gs://cudo-download/images/cudo-ethminer/win/x64/$VERSION.tar.gz
