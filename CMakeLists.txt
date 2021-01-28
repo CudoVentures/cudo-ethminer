@@ -32,6 +32,7 @@ option(APICORE "Build with API Server support" OFF)
 option(BINKERN "Install AMD binary kernels" ON)
 option(DEVBUILD "Log developer metrics" OFF)
 option(OPENSSL "Use secure ssl connections" OFF)
+option(USE_SYS_OPENCL "Build with system OpenCL" OFF)
 
 # propagates CMake configuration options to the compiler
 function(configureProject)
@@ -59,6 +60,9 @@ function(configureProject)
     if (OPENSSL)
         add_definitions(-DOPENSSL)
     endif()
+    if (USE_SYS_OPENCL)
+        add_definitions(-DUSE_SYS_OPENCL)
+    endif()
 endfunction()
 
 hunter_add_package(Boost COMPONENTS system filesystem thread)
@@ -72,6 +76,10 @@ find_package(ethash CONFIG REQUIRED)
 
 configureProject()
 
+if(APPLE)
+    set(USE_SYS_OPENCL ON)
+endif()
+
 message("----------------------------------------------------------------------------")
 message("-- CMake ${CMAKE_VERSION}")
 message("-- Build ${CMAKE_BUILD_TYPE} / ${CMAKE_SYSTEM_NAME}")
@@ -83,6 +91,7 @@ message("-- ETHDBUS          Build D-Bus components                       ${ETHD
 message("-- APICORE          Build API Server components                  ${APICORE}")
 message("-- BINKERN          Install AMD binary kernels                   ${BINKERN}")
 message("-- DEVBUILD         Build with dev logging                       ${DEVBUILD}")
+message("-- USE_SYS_OPENCL   Build with system OpenCL                     ${USE_SYS_OPENCL}")
 message("----------------------------------------------------------------------------")
 message("")
 
@@ -90,7 +99,6 @@ include(EthCompilerSettings)
 if(UNIX AND NOT APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++")
 endif()
-
 
 cable_add_buildinfo_library(PROJECT_NAME ${PROJECT_NAME})
 

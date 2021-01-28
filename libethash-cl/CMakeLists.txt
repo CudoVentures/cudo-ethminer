@@ -20,18 +20,10 @@ set(SOURCES
 	${CMAKE_CURRENT_BINARY_DIR}/ethash.h
 )
 
-if(APPLE)
-	# On macOS use system OpenCL library.
-	find_package(OpenCL REQUIRED)
-else()
-	hunter_add_package(OpenCL)
-	find_package(OpenCL CONFIG REQUIRED)
-endif()
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(..)
 
 add_library(ethash-cl ${SOURCES})
 target_link_libraries(ethash-cl PUBLIC ethcore ethash::ethash)
-target_link_libraries(ethash-cl PRIVATE OpenCL::OpenCL)
+target_link_libraries(ethash-cl PRIVATE ${CMAKE_SOURCE_DIR}/common_lib_amd_appsdk_3.0/3-0/lib/x86_64/OpenCL.lib)
 target_link_libraries(ethash-cl PRIVATE Boost::filesystem Boost::thread)
